@@ -1,0 +1,23 @@
+# Entorno virtual
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Datos reales (contienen nombre del reclamante y domicilio del servicio)
+muestra_limpia/
+muestra_limpia.zip
+*.csv
+!conocimiento/corpus/_metadatos.csv
+
+# Streamlit (API keys)
+.streamlit/secrets.toml
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Opiniones 👍/👎 de la consulta (pueden contener datos personales)
+opiniones/

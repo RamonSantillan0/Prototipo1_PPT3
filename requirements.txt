@@ -1,0 +1,14 @@
+streamlit>=1.40.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+plotly>=7.0.0,<8.0.0
+numpy>=1.24.0,<3.0.0
+# Consulta normativa (RAG) y recepción de reclamos
+requests>=2.31.0
+python-docx>=1.1.0
+# Opcional: IA con Claude (Anthropic). Para Ollama Cloud no hace falta.
+# anthropic>=0.40.0
+# Leer PDF subidos a la base de conocimiento
+pymupdf>=1.24.0
+# Opcional: búsqueda por significado sin Ollama (instalar uno)
+# fastembed>=0.3.0
+# sentence-transformers>=3.0.0

@@ -1,0 +1,70 @@
+{
+  "creado": "2026-09-30 21:04",
+  "fragmentos": 147,
+  "documentos": 10,
+  "embeddings": "ninguno",
+  "modelo_embeddings": "",
+  "host_ollama": "http://localhost:11434",
+  "lecturas": [
+    {
+      "documento": "dictamenes/MODELO_Dictamen_Sobrefacturacion.docx",
+      "lectura": "texto",
+      "fragmentos": 8,
+      "caracteres": 3399
+    },
+    {
+      "documento": "indicadores/analisis_flujo_expedientes.md",
+      "lectura": "texto",
+      "fragmentos": 11,
+      "caracteres": 9552
+    },
+    {
+      "documento": "indicadores/indicadores_generales.md",
+      "lectura": "texto",
+      "fragmentos": 7,
+      "caracteres": 3353
+    },
+    {
+      "documento": "indicadores/indicadores_por_area.md",
+      "lectura": "texto",
+      "fragmentos": 10,
+      "caracteres": 2152
+    },
+    {
+      "documento": "indicadores/indicadores_por_localidad.md",
+      "lectura": "texto",
+      "fragmentos": 15,
+      "caracteres": 6085
+    },
+    {
+      "documento": "indicadores/indicadores_por_tipo_de_reclamo.md",
+      "lectura": "texto",
+      "fragmentos": 55,
+      "caracteres": 22374
+    },
+    {
+      "documento": "institucional/circuito_y_plazos.md",
+      "lectura": "texto",
+      "fragmentos": 15,
+      "caracteres": 4233
+    },
+    {
+      "documento": "institucional/codigos_de_reclamo.md",
+      "lectura": "texto",
+      "fragmentos": 6,
+      "caracteres": 3176
+    },
+    {
+      "documento": "normativa/normas_de_referencia.md",
+      "lectura": "texto",
+      "fragmentos": 4,
+      "caracteres": 1940
+    },
+    {
+      "documento": "resoluciones/MODELO_Resolucion_Sobrefacturacion.docx",
+      "lectura": "texto",
+      "fragmentos": 16,
+      "caracteres": 5448
+    }
+  ]
+}
