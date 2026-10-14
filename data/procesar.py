@@ -47,14 +47,15 @@ def _leer_csv_bytes(nombre: str, contenido: bytes) -> pd.DataFrame:
     ultimo_error = None
     for kwargs in intentos:
         try:
-            df = pd.read_csv(io.BytesIO(contenido), **kwargs)
+            # dtype=str: los codigos tipo "01" o "F-16" no se convierten en numeros (1, 16)
+            df = pd.read_csv(io.BytesIO(contenido), dtype=str, **kwargs)
             if df.shape[1] >= 2:
                 return df
         except Exception as e:  # noqa: BLE001 - queremos probar todas las variantes
             ultimo_error = e
             continue
     try:
-        return pd.read_csv(io.BytesIO(contenido), sep=None, engine="python", encoding="utf-8")
+        return pd.read_csv(io.BytesIO(contenido), sep=None, engine="python", encoding="utf-8", dtype=str)
     except Exception as e:  # noqa: BLE001
         raise ValueError(f"No se pudo leer '{nombre}': {e}") from (ultimo_error or e)
 
@@ -72,12 +73,39 @@ def leer_archivo(uploaded_file) -> pd.DataFrame:
             csv_members = [m for m in zf.namelist() if m.lower().endswith(".csv")]
             if not csv_members:
                 raise ValueError("El .zip no contiene ningun archivo .csv.")
-            elegido = next(
-                (m for m in csv_members if m.lower().rsplit("/", 1)[-1] == "reclamos.csv"),
-                csv_members[0],
-            )
+            base = lambda m: m.lower().rsplit("/", 1)[-1]  # noqa: E731
+            # 1) reclamos.csv exacto; 2) un csv con "reclamo" en el nombre que no sea el de codigos
+            #    (ej. reclamos_limpio.csv); 3) el csv mas grande.
+            elegido = (next((m for m in csv_members if base(m) == "reclamos.csv"), None)
+                       or next((m for m in csv_members if base(m).startswith("reclamo")), None)
+                       or next((m for m in csv_members if "reclamo" in base(m) and "codigo" not in base(m)), None)
+                       or max(csv_members, key=lambda m: zf.getinfo(m).file_size))
             with zf.open(elegido) as f:
-                return _leer_csv_bytes(elegido, f.read())
+                df = _leer_csv_bytes(elegido, f.read())
+            # Tablas auxiliares opcionales del mismo zip: codigos (codigo -> descripcion) y
+            # localidades (localidad -> latitud/longitud). Se guardan en df.attrs.
+            for m in csv_members:
+                if m == elegido:
+                    continue
+                try:
+                    with zf.open(m) as f:
+                        aux = _leer_csv_bytes(m, f.read())
+                except Exception:  # noqa: BLE001 - las auxiliares son opcionales
+                    continue
+                cols = {c.lower(): c for c in aux.columns}
+                if "codigo" in base(m) and len(aux.columns) >= 2:
+                    c_cod, c_desc = aux.columns[0], aux.columns[1]
+                    df.attrs["codigos"] = {str(k).strip(): str(v).strip()
+                                           for k, v in zip(aux[c_cod], aux[c_desc]) if pd.notna(k)}
+                elif "localidad" in cols and ("latitud" in cols or "lat" in cols):
+                    c_lat = cols.get("latitud") or cols.get("lat")
+                    c_lon = cols.get("longitud") or cols.get("lon") or cols.get("lng")
+                    if c_lon:
+                        df.attrs["coords"] = {
+                            str(r[cols["localidad"]]).strip(): (float(r[c_lat]), float(r[c_lon]))
+                            for _, r in aux.iterrows()
+                            if pd.notna(r[c_lat]) and pd.notna(r[c_lon])}
+            return df
 
     return _leer_csv_bytes(nombre or "archivo.csv", contenido)
 
@@ -147,7 +175,7 @@ class DatosBundle:
         if conteo_tipo.empty:
             raise ValueError("La columna de tipo de reclamo no tiene valores validos.")
         self.TIPOS = list(conteo_tipo.head(5).index)
-        self.TIPO_DESC = {t: TIPO_DESC_CONOCIDO.get(t, t) for t in self.TIPOS}
+        self.TIPO_DESC = self._descripciones(df, col_tipo, self.TIPOS)
 
         # Localidad: top 5 por frecuencia + intento de matchear con las
         # coordenadas conocidas (Capital, La Banda, Termas, Añatuya, Frías).
@@ -157,9 +185,10 @@ class DatosBundle:
             raise ValueError("La columna de localidad no tiene valores validos.")
         self.LOCALIDADES = list(conteo_loc.head(5).index)
 
+        coords_propias = self._coords_del_archivo(df)
         self.COORDS = {}
         for loc in self.LOCALIDADES:
-            match = self._buscar_coords(loc)
+            match = coords_propias.get(loc) or self._buscar_coords(loc)
             sub = df[df["_localidad"] == loc]
             tipo_frecuente = sub["_tipo"].value_counts().idxmax() if not sub.empty else "-"
             if match:
@@ -181,6 +210,7 @@ class DatosBundle:
         self.LOCALIDADES_N: dict[str, list[int]] = {}
         self._heatmap_cache: dict[str, list[list[int]]] = {}
         self._tl_cache: dict[str, list[list[int]]] = {}
+        self._tl_canal_cache: dict[str, tuple[list[list[int]], list[list[int]]]] = {}
 
         grupos = [("Todos los años", df)] + [(str(a), df[df["_anio"] == a]) for a in anios_presentes]
         for clave, subset in grupos:
@@ -199,6 +229,15 @@ class DatosBundle:
                 [int(((subset["_tipo"] == t) & (subset["_localidad"] == l)).sum()) for l in self.LOCALIDADES]
                 for t in self.TIPOS
             ]
+            # Mismo cruce tipo x localidad, separado por canal real de cada reclamo
+            self._tl_canal_cache[clave] = tuple(
+                [
+                    [int(((subset["_tipo"] == t) & (subset["_localidad"] == l) & (subset["_canal"] == canal)).sum())
+                     for l in self.LOCALIDADES]
+                    for t in self.TIPOS
+                ]
+                for canal in ("Presencial", "Virtual")
+            )
 
         # Año anterior (para el delta del KPI de total)
         self.ANIO_ANTERIOR: dict[str, int | None] = {"Todos los años": None}
@@ -209,6 +248,51 @@ class DatosBundle:
         self.resto_provincial = int(len(df) - sum(self.LOCALIDADES_N["Todos los años"]))
         self.total_localidades_distintas = int(df["_localidad"].nunique())
         self.total_tipos_distintos = int(df["_tipo"].nunique())
+
+    @staticmethod
+    def _descripciones(df: pd.DataFrame, col_tipo: str, tipos: list[str]) -> dict[str, str]:
+        """Nombre legible de cada tipo. Prioridad: tabla de codigos del zip -> columna de descripcion
+        del propio CSV (ej. tipo_reclamo junto a cod_reclamo) -> nombres conocidos -> el codigo."""
+        desc: dict[str, str] = {}
+        codigos = df.attrs.get("codigos") or {}
+        if codigos:
+            normal = {k.lstrip("0") or "0": v for k, v in codigos.items()}
+            for t in tipos:
+                d = codigos.get(t) or normal.get(t.lstrip("0") or "0")
+                if d:
+                    desc[t] = d
+        candidatas = [c for c in df.columns if c != col_tipo and any(
+            p in str(c).lower() for p in ("tipo_reclamo", "desc_reclamo", "descripcion_tipo", "descproblema",
+                                          "tipo reclamo", "desc_tipo"))]
+        if candidatas:
+            col_desc = candidatas[0]
+            sub = df[[col_desc]].assign(_t=df["_tipo"]).dropna()
+            for t in tipos:
+                if t in desc:
+                    continue
+                vals = sub.loc[sub["_t"] == t, col_desc].astype(str).str.strip()
+                if not vals.empty:
+                    desc[t] = vals.value_counts().idxmax()
+        return {t: desc.get(t) or TIPO_DESC_CONOCIDO.get(t, t) for t in tipos}
+
+    @staticmethod
+    def _coords_del_archivo(df: pd.DataFrame) -> dict:
+        """Coordenadas por localidad desde columnas latitud/longitud del CSV o la tabla de localidades
+        del zip. Devuelve {localidad: {lat, lon, nombre_completo}}."""
+        cols = {str(c).lower(): c for c in df.columns}
+        c_lat = cols.get("latitud") or cols.get("lat")
+        c_lon = cols.get("longitud") or cols.get("lon") or cols.get("lng")
+        salida = {}
+        if c_lat and c_lon:
+            lat = pd.to_numeric(df[c_lat], errors="coerce")
+            lon = pd.to_numeric(df[c_lon], errors="coerce")
+            tmp = pd.DataFrame({"loc": df["_localidad"], "lat": lat, "lon": lon}).dropna()
+            for loc, g in tmp.groupby("loc"):
+                salida[loc] = {"lat": float(g["lat"].median()), "lon": float(g["lon"].median()),
+                               "nombre_completo": loc}
+        for loc, (la, lo) in (df.attrs.get("coords") or {}).items():
+            salida.setdefault(loc, {"lat": la, "lon": lo, "nombre_completo": loc})
+        return salida
 
     @staticmethod
     def _buscar_coords(nombre_localidad: str):
@@ -231,3 +315,7 @@ class DatosBundle:
 
     def get_TL(self, anio: str) -> list:
         return self._tl_cache[anio]
+
+    def get_TL_canal(self, anio: str) -> tuple[list, list]:
+        """(presencial, virtual): matrices tipo x localidad contadas con el canal real de cada reclamo."""
+        return self._tl_canal_cache[anio]

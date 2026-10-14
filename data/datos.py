@@ -230,3 +230,16 @@ CARD_BG    = "#FAFCFB"
 BORDER     = "#DCE6E4"
 TEXT_MAIN  = "#0B211E"
 TEXT_MUTED = "#33504C"
+
+
+# Canal por localidad (datos de ejemplo): cada localidad tiene su propia proporcion de reclamos
+# virtuales, para que el grafico de barras muestre diferencias entre localidades como en datos reales.
+_VIRTUAL_POR_LOC = _rng.uniform(0.10, 0.55, size=len(LOCALIDADES))
+
+
+def get_TL_canal(anio: str) -> tuple[list, list]:
+    """(presencial, virtual): matrices tipo x localidad; presencial + virtual = get_TL(anio)."""
+    tl = get_TL(anio)
+    virtual = [[int(round(n * _VIRTUAL_POR_LOC[j])) for j, n in enumerate(fila)] for fila in tl]
+    presencial = [[n - v for n, v in zip(fila, fv)] for fila, fv in zip(tl, virtual)]
+    return presencial, virtual

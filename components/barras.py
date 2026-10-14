@@ -30,10 +30,18 @@ def render_barras(anio: str, datos):
     fig = go.Figure()
     colores = list(COLORES_TIPO.values())
 
+    # Canal real por localidad si el dataset lo trae (get_TL_canal); si no, se reparte con la
+    # proporcion general presencial/virtual (aproximacion).
+    tl_canal = datos.get_TL_canal(anio) if hasattr(datos, "get_TL_canal") else None
+
     for i, tipo in enumerate(tipos):
         n_loc = len(localidades)
-        datos_pres = [round(TL[i][j] * p_ratio) for j in range(n_loc)]
-        datos_virt = [TL[i][j] - datos_pres[j] for j in range(n_loc)]
+        if tl_canal is not None:
+            datos_pres = list(tl_canal[0][i])
+            datos_virt = list(tl_canal[1][i])
+        else:
+            datos_pres = [round(TL[i][j] * p_ratio) for j in range(n_loc)]
+            datos_virt = [TL[i][j] - datos_pres[j] for j in range(n_loc)]
         color = colores[i % len(colores)]
 
         # Barra presencial (color solido)
@@ -91,6 +99,7 @@ def render_barras(anio: str, datos):
             gridcolor="rgba(11,33,30,0.10)",
         ),
         xaxis=dict(
+            type="category",
             gridcolor="rgba(11,33,30,0.10)",
         ),
         margin=dict(l=60, r=20, t=50, b=120),

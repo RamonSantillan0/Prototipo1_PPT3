@@ -16,7 +16,17 @@ def render_heatmap(anio: str, datos):
     """
     mt = datos.get_heatmap(anio)
     totales_fila = [sum(fila) for fila in mt]
-    y_labels = [f"{t}" for t in datos.TIPOS]
+    # Etiqueta legible: el nombre del tipo (si el dataset solo trae codigos como "01" o "10", se ven
+    # los nombres y no numeros sueltos). Los nombres largos se recortan para que entren a la izquierda.
+    tipo_desc = getattr(datos, "TIPO_DESC", {}) or {}
+
+    def _etiqueta(t):
+        d = str(tipo_desc.get(t, t))
+        return d if len(d) <= 24 else d[:23] + "…"
+
+    y_labels = [_etiqueta(t) for t in datos.TIPOS]
+    if len(set(y_labels)) < len(y_labels):          # nombres repetidos: se agrega el codigo
+        y_labels = [f"{l} ({t})" for l, t in zip(y_labels, datos.TIPOS)]
 
     # Dos subplots con ancho fijo (12 meses + columna Total) en vez de dos
     # trazas de Heatmap sobre el mismo eje categorico: con trazas separadas
@@ -63,8 +73,10 @@ def render_heatmap(anio: str, datos):
         zmin=0, zmax=1,
     ), row=1, col=2)
 
-    fig.update_yaxes(autorange="reversed", row=1, col=1)  # F-17 arriba
-    fig.update_yaxes(autorange="reversed", showticklabels=False, row=1, col=2)
+    # type="category": sin esto, si los tipos parecen numeros Plotly arma un eje numerico y las filas se
+    # desalinean (filas de distinto alto, etiquetas 2 y 4 sueltas).
+    fig.update_yaxes(type="category", autorange="reversed", row=1, col=1)  # el más frecuente arriba
+    fig.update_yaxes(type="category", autorange="reversed", showticklabels=False, row=1, col=2)
 
     fig.update_layout(
         title=dict(
@@ -76,7 +88,7 @@ def render_heatmap(anio: str, datos):
         paper_bgcolor=CARD_BG,
         font=dict(color=TEXT_MAIN),
         height=220,
-        margin=dict(l=60, r=20, t=40, b=40),
+        margin=dict(l=min(10 + 7 * max(len(l) for l in y_labels), 190), r=20, t=40, b=40),
         showlegend=False,
     )
 

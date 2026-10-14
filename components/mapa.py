@@ -40,7 +40,12 @@ def render_mapa(anio: str, datos):
     lats = [coords[l]["lat"] for l in localidades]
     lons = [coords[l]["lon"] for l in localidades]
     nombres = [coords[l]["nombre_completo"] for l in localidades]
-    tipos_f = [coords[l]["tipo_frecuente"] for l in localidades]
+    tipo_desc = getattr(datos, "TIPO_DESC", {}) or {}
+    tipos_f = []
+    for l in localidades:
+        t = coords[l]["tipo_frecuente"]
+        d = tipo_desc.get(t, t)
+        tipos_f.append(f"{d} ({t})" if d != t else t)
 
     # Escala sqrt para radio de burbujas (max ~50px de diametro)
     sizes = [int(np.sqrt(n / max_n) * 50) if max_n else 0 for n in locs_n]
